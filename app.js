@@ -25,7 +25,8 @@ let routes = [];
 let trips = [];
 let stops = [];
 let shapes = [];
-
+let stopTimesByTrip = new Map();
+let stopTimesByStop = new Map();
 let gps = null;
 let watch = null;
 let routeLayer = null;
@@ -137,7 +138,28 @@ async function loadGTFS(zip) {
 trips = tables['trips.txt'];
 stops = tables['stops.txt'];
 shapes = tables['shapes.txt'] || [];
+// Crear índices rápidos de horarios
+stopTimesByTrip = new Map();
+stopTimesByStop = new Map();
 
+tables['stop_times.txt'].forEach(item => {
+  if (!stopTimesByTrip.has(item.trip_id)) {
+    stopTimesByTrip.set(item.trip_id, []);
+  }
+
+  if (!stopTimesByStop.has(item.stop_id)) {
+    stopTimesByStop.set(item.stop_id, []);
+  }
+
+  stopTimesByTrip.get(item.trip_id).push(item);
+  stopTimesByStop.get(item.stop_id).push(item);
+});
+
+stopTimesByTrip.forEach(items => {
+  items.sort((a, b) =>
+    Number(a.stop_sequence) - Number(b.stop_sequence)
+  );
+});
 const calendars = tables['calendar.txt'] || [];
 const calendarDates = tables['calendar_dates.txt'] || [];
 
@@ -255,9 +277,7 @@ function routeName(id) {
 }
 
 function tripStops(tripId) {
-  return tables['stop_times.txt']
-    .filter(s => s.trip_id === tripId)
-    .sort((a, b) => Number(a.stop_sequence) - Number(b.stop_sequence));
+  return stopTimesByTrip.get(tripId) || [];
 }
 
 function getDirections(lineId) {

@@ -114,7 +114,12 @@ async function loadGTFS(zip) {
     return files.length ? files[0] : null;
   };
 
-  for (const name of [...required, 'shapes.txt']) {
+  for (const name of [
+  ...required,
+  'shapes.txt',
+  'calendar.txt',
+  'calendar_dates.txt'
+]) {
     const file = getFile(name);
 
     if (file) {

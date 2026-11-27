@@ -1084,7 +1084,209 @@ function setupPlannerSearch(inputId, resultsId, type) {
 
 setupPlannerSearch('originSearch', 'originResults', 'origin');
 setupPlannerSearch('destinationSearch', 'destinationResults', 'destination');
+// ==========================================
+// MOTOR DE RUTAS Y TRANSBORDOS
+// ==========================================
 
+function getJourneyLeg(departureItem, destinationId) {
+  const trip = trips.find(t => t.trip_id === departureItem.trip_id);
+
+  if (!trip) return null;
+
+  const items = tripStops(trip.trip_id);
+  const startIndex = items.indexOf(departureItem);
+
+  if (startIndex === -1) return null;
+
+  const endIndex = items.findIndex((item, index) =>
+    index > startIndex && item.stop_id === destinationId
+  );
+
+  if (endIndex === -1) return null;
+
+  return {
+    trip,
+    items,
+    startIndex,
+    endIndex,
+    origin: items[startIndex],
+    destination: items[endIndex]
+  };
+}
+
+function getDeparturesAtStop(stopId, earliestSeconds, activeServices) {
+  return (stopTimesByStop.get(stopId) || [])
+    .filter(item => {
+      const departure = timeToSeconds(item.departure_time);
+
+      if (departure === null || departure < earliestSeconds) {
+        return false;
+      }
+
+      const trip = trips.find(t => t.trip_id === item.trip_id);
+
+      if (!trip) return false;
+
+      return isTripServiceActive(trip, activeServices);
+    })
+    .sort((a, b) =>
+      timeToSeconds(a.departure_time) -
+      timeToSeconds(b.departure_time)
+    );
+}
+
+function searchJourneys(originId, destinationId) {
+  const now = new Date();
+
+  const currentSeconds =
+    now.getHours() * 3600 +
+    now.getMinutes() * 60 +
+    now.getSeconds();
+
+  const activeServices = getActiveServiceIds(now);
+  const minimumTransfer = 5 * 60;
+  const results = [];
+
+  const departures = getDeparturesAtStop(
+    originId,
+    currentSeconds,
+    activeServices
+  );
+
+  function addResult(legs) {
+    if (results.length >= 100) return;
+
+    const key = legs.map(leg => leg.trip.trip_id).join('-');
+
+    if (results.some(result => result.key === key)) return;
+
+    results.push({
+      key,
+      legs
+    });
+  }
+
+  departures.forEach(firstDeparture => {
+    const firstTrip = trips.find(t =>
+      t.trip_id === firstDeparture.trip_id
+    );
+
+    if (!firstTrip) return;
+
+    const firstItems = tripStops(firstTrip.trip_id);
+    const firstIndex = firstItems.indexOf(firstDeparture);
+
+    if (firstIndex === -1) return;
+
+    const direct = getJourneyLeg(
+      firstDeparture,
+      destinationId
+    );
+
+    if (direct) {
+      addResult([direct]);
+    }
+
+    // Buscar primer transbordo
+    firstItems.slice(firstIndex + 1).forEach(transferItem => {
+      const transferArrival = timeToSeconds(
+        transferItem.arrival_time
+      );
+
+      if (transferArrival === null) return;
+
+      const secondDepartures = getDeparturesAtStop(
+        transferItem.stop_id,
+        transferArrival + minimumTransfer,
+        activeServices
+      );
+
+      secondDepartures.forEach(secondDeparture => {
+        if (secondDeparture.trip_id === firstTrip.trip_id) return;
+
+        const secondLeg = getJourneyLeg(
+          secondDeparture,
+          destinationId
+        );
+
+        if (secondLeg) {
+          const firstLeg = {
+            trip: firstTrip,
+            items: firstItems,
+            startIndex: firstIndex,
+            endIndex: firstItems.indexOf(transferItem),
+            origin: firstDeparture,
+            destination: transferItem
+          };
+
+          addResult([firstLeg, secondLeg]);
+        }
+
+        // Buscar segundo transbordo
+        const secondTrip = trips.find(t =>
+          t.trip_id === secondDeparture.trip_id
+        );
+
+        if (!secondTrip) return;
+
+        const secondItems = tripStops(secondTrip.trip_id);
+        const secondIndex = secondItems.indexOf(secondDeparture);
+
+        if (secondIndex === -1) return;
+
+        secondItems.slice(secondIndex + 1).forEach(secondTransfer => {
+          const arrival = timeToSeconds(
+            secondTransfer.arrival_time
+          );
+
+          if (arrival === null) return;
+
+          const thirdDepartures = getDeparturesAtStop(
+            secondTransfer.stop_id,
+            arrival + minimumTransfer,
+            activeServices
+          );
+
+          thirdDepartures.forEach(thirdDeparture => {
+            if (
+              thirdDeparture.trip_id === firstTrip.trip_id ||
+              thirdDeparture.trip_id === secondTrip.trip_id
+            ) return;
+
+            const thirdLeg = getJourneyLeg(
+              thirdDeparture,
+              destinationId
+            );
+
+            if (!thirdLeg) return;
+
+            const firstLeg = {
+              trip: firstTrip,
+              items: firstItems,
+              startIndex: firstIndex,
+              endIndex: firstItems.indexOf(transferItem),
+              origin: firstDeparture,
+              destination: transferItem
+            };
+
+            const secondLeg = {
+              trip: secondTrip,
+              items: secondItems,
+              startIndex: secondIndex,
+              endIndex: secondItems.indexOf(secondTransfer),
+              origin: secondDeparture,
+              destination: secondTransfer
+            };
+
+            addResult([firstLeg, secondLeg, thirdLeg]);
+          });
+        });
+      });
+    });
+  });
+
+  return results;
+}
 $('planJourney').addEventListener('click', () => {
   const output = $('journeyResults');
   output.replaceChildren();

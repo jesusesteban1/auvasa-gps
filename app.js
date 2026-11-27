@@ -1135,6 +1135,7 @@ function getDeparturesAtStop(stopId, earliestSeconds, activeServices) {
     );
 }
 
+
 function searchJourneys(originId, destinationId) {
   const now = new Date();
 
@@ -1147,143 +1148,208 @@ function searchJourneys(originId, destinationId) {
   const minimumTransfer = 5 * 60;
   const results = [];
 
-  const departures = getDeparturesAtStop(
-    originId,
-    currentSeconds,
-    activeServices
+  // Índice rápido de viajes
+  const tripById = new Map(
+    trips.map(trip => [trip.trip_id, trip])
   );
 
+  // Preparar salidas válidas por parada
+  const departuresByStop = new Map();
+
+  stopTimesByStop.forEach((items, stopId) => {
+    const valid = items.filter(item => {
+      const trip = tripById.get(item.trip_id);
+
+      return trip &&
+        isTripServiceActive(trip, activeServices) &&
+        timeToSeconds(item.departure_time) !== null;
+    });
+
+    valid.sort((a, b) =>
+      timeToSeconds(a.departure_time) -
+      timeToSeconds(b.departure_time)
+    );
+
+    departuresByStop.set(stopId, valid);
+  });
+
+  // Obtener salidas posteriores a una hora
+  function departuresAfter(stopId, seconds, limit) {
+    const items = departuresByStop.get(stopId) || [];
+
+    let low = 0;
+    let high = items.length;
+
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2);
+
+      if (
+        timeToSeconds(items[middle].departure_time) < seconds
+      ) {
+        low = middle + 1;
+      } else {
+        high = middle;
+      }
+    }
+
+    return items.slice(low, low + limit);
+  }
+
+  // Crear tramo de viaje
+  function makeLeg(trip, items, startIndex, endIndex) {
+    return {
+      trip,
+      items,
+      startIndex,
+      endIndex,
+      origin: items[startIndex],
+      destination: items[endIndex]
+    };
+  }
+
   function addResult(legs) {
-    if (results.length >= 100) return;
+    if (results.length >= 60) return;
 
     const key = legs.map(leg => leg.trip.trip_id).join('-');
 
     if (results.some(result => result.key === key)) return;
 
-    results.push({
-      key,
-      legs
-    });
+    results.push({ key, legs });
   }
 
-  departures.forEach(firstDeparture => {
-    const firstTrip = trips.find(t =>
-      t.trip_id === firstDeparture.trip_id
-    );
+  // Salidas desde el origen
+  const firstDepartures = departuresAfter(
+    originId,
+    currentSeconds,
+    20
+  );
 
-    if (!firstTrip) return;
+  for (const firstDeparture of firstDepartures) {
+    const firstTrip = tripById.get(firstDeparture.trip_id);
+    if (!firstTrip) continue;
 
     const firstItems = tripStops(firstTrip.trip_id);
     const firstIndex = firstItems.indexOf(firstDeparture);
 
-    if (firstIndex === -1) return;
+    if (firstIndex < 0) continue;
 
-    const direct = getJourneyLeg(
-      firstDeparture,
-      destinationId
-    );
+    for (
+      let i = firstIndex + 1;
+      i < firstItems.length;
+      i++
+    ) {
+      const transferItem = firstItems[i];
 
-    if (direct) {
-      addResult([direct]);
-    }
+      // ¿Llegamos directamente al destino?
+      if (transferItem.stop_id === destinationId) {
+        addResult([
+          makeLeg(firstTrip, firstItems, firstIndex, i)
+        ]);
+        continue;
+      }
 
-    // Buscar primer transbordo
-    firstItems.slice(firstIndex + 1).forEach(transferItem => {
-      const transferArrival = timeToSeconds(
+      const firstArrival = timeToSeconds(
         transferItem.arrival_time
       );
 
-      if (transferArrival === null) return;
+      if (firstArrival === null) continue;
 
-      const secondDepartures = getDeparturesAtStop(
+      // Buscar segundo autobús
+      const secondDepartures = departuresAfter(
         transferItem.stop_id,
-        transferArrival + minimumTransfer,
-        activeServices
+        firstArrival + minimumTransfer,
+        6
       );
 
-      secondDepartures.forEach(secondDeparture => {
-        if (secondDeparture.trip_id === firstTrip.trip_id) return;
-
-        const secondLeg = getJourneyLeg(
-          secondDeparture,
-          destinationId
-        );
-
-        if (secondLeg) {
-          const firstLeg = {
-            trip: firstTrip,
-            items: firstItems,
-            startIndex: firstIndex,
-            endIndex: firstItems.indexOf(transferItem),
-            origin: firstDeparture,
-            destination: transferItem
-          };
-
-          addResult([firstLeg, secondLeg]);
+      for (const secondDeparture of secondDepartures) {
+        if (secondDeparture.trip_id === firstTrip.trip_id) {
+          continue;
         }
 
-        // Buscar segundo transbordo
-        const secondTrip = trips.find(t =>
-          t.trip_id === secondDeparture.trip_id
-        );
-
-        if (!secondTrip) return;
+        const secondTrip = tripById.get(secondDeparture.trip_id);
+        if (!secondTrip) continue;
 
         const secondItems = tripStops(secondTrip.trip_id);
         const secondIndex = secondItems.indexOf(secondDeparture);
 
-        if (secondIndex === -1) return;
+        if (secondIndex < 0) continue;
 
-        secondItems.slice(secondIndex + 1).forEach(secondTransfer => {
-          const arrival = timeToSeconds(
+        for (
+          let j = secondIndex + 1;
+          j < secondItems.length;
+          j++
+        ) {
+          const secondTransfer = secondItems[j];
+
+          // Llegada con un transbordo
+          if (secondTransfer.stop_id === destinationId) {
+            addResult([
+              makeLeg(firstTrip, firstItems, firstIndex, i),
+              makeLeg(secondTrip, secondItems, secondIndex, j)
+            ]);
+            continue;
+          }
+
+          const secondArrival = timeToSeconds(
             secondTransfer.arrival_time
           );
 
-          if (arrival === null) return;
+          if (secondArrival === null) continue;
 
-          const thirdDepartures = getDeparturesAtStop(
+          // Buscar tercer autobús
+          const thirdDepartures = departuresAfter(
             secondTransfer.stop_id,
-            arrival + minimumTransfer,
-            activeServices
+            secondArrival + minimumTransfer,
+            4
           );
 
-          thirdDepartures.forEach(thirdDeparture => {
+          for (const thirdDeparture of thirdDepartures) {
             if (
               thirdDeparture.trip_id === firstTrip.trip_id ||
               thirdDeparture.trip_id === secondTrip.trip_id
-            ) return;
+            ) {
+              continue;
+            }
 
-            const thirdLeg = getJourneyLeg(
-              thirdDeparture,
-              destinationId
+            const thirdTrip = tripById.get(thirdDeparture.trip_id);
+            if (!thirdTrip) continue;
+
+            const thirdItems = tripStops(thirdTrip.trip_id);
+            const thirdIndex = thirdItems.indexOf(thirdDeparture);
+
+            if (thirdIndex < 0) continue;
+
+            const destinationIndex = thirdItems.findIndex(
+              (item, index) =>
+                index > thirdIndex &&
+                item.stop_id === destinationId
             );
 
-            if (!thirdLeg) return;
+            if (destinationIndex < 0) continue;
 
-            const firstLeg = {
-              trip: firstTrip,
-              items: firstItems,
-              startIndex: firstIndex,
-              endIndex: firstItems.indexOf(transferItem),
-              origin: firstDeparture,
-              destination: transferItem
-            };
+            addResult([
+              makeLeg(firstTrip, firstItems, firstIndex, i),
+              makeLeg(secondTrip, secondItems, secondIndex, j),
+              makeLeg(
+                thirdTrip,
+                thirdItems,
+                thirdIndex,
+                destinationIndex
+              )
+            ]);
+          }
 
-            const secondLeg = {
-              trip: secondTrip,
-              items: secondItems,
-              startIndex: secondIndex,
-              endIndex: secondItems.indexOf(secondTransfer),
-              origin: secondDeparture,
-              destination: secondTransfer
-            };
+          if (results.length >= 60) break;
+        }
 
-            addResult([firstLeg, secondLeg, thirdLeg]);
-          });
-        });
-      });
-    });
-  });
+        if (results.length >= 60) break;
+      }
+
+      if (results.length >= 60) break;
+    }
+
+    if (results.length >= 60) break;
+  }
 
   return results;
 }

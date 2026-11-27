@@ -1,10 +1,410 @@
-const map=L.map('map').setView([41.6523,-4.7245],13);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
-let tables={},routes=[],trips=[],stops=[],shapes=[],gps=null,watch=null,routeLayer=null,stopLayer=null,activeStops=[],stopIndex=0;
-const $=id=>document.getElementById(id);function csv(s){let lines=s.trim().split(/\r?\n/),head=lines.shift().split(',');return lines.map(l=>{let a=[],v='',q=false;for(let i=0;i<l.length;i++){let c=l[i];if(c==='"'){if(q&&l[i+1]==='"'){v+='"';i++}else q=!q}else if(c===','&&!q){a.push(v);v=''}else v+=c}a.push(v);return Object.fromEntries(head.map((h,i)=>[h,a[i]||'']))})}
-$('gtfs').addEventListener('change',async e=>{let f=e.target.files[0];if(!f)return;$('status').textContent='Leyendo GTFS…';try{let z=await JSZip.loadAsync(f);for(let n of ['routes.txt','trips.txt','stops.txt','stop_times.txt','shapes.txt'])if(z.file(n))tables[n]=csv(await z.file(n).async('text'));routes=tables['routes.txt']||[];trips=tables['trips.txt']||[];stops=tables['stops.txt']||[];shapes=tables['shapes.txt']||[];let sel=$('line');sel.innerHTML='<option value="">Selecciona línea</option>';routes.forEach(r=>{let o=document.createElement('option');o.value=r.route_id;o.textContent=(r.route_short_name||r.route_id)+' — '+(r.route_long_name||'');sel.append(o)});sel.disabled=false;$('status').textContent=`GTFS cargado: ${routes.length} líneas, ${stops.length} paradas. Elige línea y sentido.`}catch(err){$('status').textContent='No se pudo leer el ZIP. Comprueba que contiene archivos GTFS estándar.'}});
-$('line').addEventListener('change',()=>{let id=$('line').value,ts=trips.filter(t=>t.route_id===id),d=$('direction');d.innerHTML='';let dirs=[...new Set(ts.map(t=>t.direction_id||'0'))];dirs.forEach(x=>{let o=document.createElement('option');o.value=x;o.textContent=x==='0'?'Sentido 1':x==='1'?'Sentido 2':'Sentido '+x;d.append(o)});d.disabled=!id;$('start').disabled=!id});
-function stopObj(id){return stops.find(s=>s.stop_id===id)}function announce(t){if(!('speechSynthesis'in window))return;let u=new SpeechSynthesisUtterance(t);u.lang='es-ES';speechSynthesis.cancel();speechSynthesis.speak(u)}
-$('start').onclick=()=>{let id=$('line').value,dir=$('direction').value,t=trips.find(x=>x.route_id===id&&(x.direction_id||'0')===dir);if(!t){$('status').textContent='No hay viaje disponible para ese sentido en el GTFS cargado.';return}let st=(tables['stop_times.txt']||[]).filter(x=>x.trip_id===t.trip_id).sort((a,b)=>+a.stop_sequence- +b.stop_sequence);activeStops=st.map(x=>stopObj(x.stop_id)).filter(Boolean);stopIndex=0;draw(t);if(!navigator.geolocation){$('status').textContent='Este navegador no ofrece GPS.';return}watch=navigator.geolocation.watchPosition(pos=>{let lat=pos.coords.latitude,lon=pos.coords.longitude,v=Math.round((pos.coords.speed||0)*3.6);$('speed').textContent=v;gps=[lat,lon];if(!window.busMarker)window.busMarker=L.circleMarker(gps,{radius:9,color:'#087fc1',fillColor:'#fff',fillOpacity:1,weight:4}).addTo(map);else window.busMarker.setLatLng(gps);map.panTo(gps);updateNext()},err=>$('status').textContent='No se pudo obtener GPS: '+err.message,{enableHighAccuracy:true,maximumAge:2000});$('stop').disabled=false;$('start').disabled=true;$('status').textContent='Navegación GPS activa. Sigue el recorrido resaltado.';announce('Navegación iniciada')};
-function draw(t){if(routeLayer)map.removeLayer(routeLayer);if(stopLayer)map.removeLayer(stopLayer);let pts=shapes.filter(s=>s.shape_id===t.shape_id).sort((a,b)=>+a.shape_pt_sequence- +b.shape_pt_sequence).map(s=>[+s.shape_pt_lat,+s.shape_pt_lon]);if(pts.length){routeLayer=L.polyline(pts,{color:'#087fc1',weight:6,opacity:.85}).addTo(map);map.fitBounds(routeLayer.getBounds(),{padding:[25,25]})}stopLayer=L.layerGroup().addTo(map);activeStops.forEach((s,i)=>{let m=L.circleMarker([+s.stop_lat,+s.stop_lon],{radius:5,color:'#10253f',fillColor:'#fff',fillOpacity:1}).addTo(stopLayer).bindTooltip((i+1)+'. '+s.stop_name);});}
-function updateNext(){if(!gps||!activeStops.length)return;let best=Infinity,bi=stopIndex;for(let i=stopIndex;i<Math.min(stopIndex+4,activeStops.length);i++){let s=activeStops[i],d=map.distance(gps,[+s.stop_lat,+s.stop_lon]);if(d<best){best=d;bi=i}}if(best<70&&bi>=stopIndex){stopIndex=Math.min(bi+1,activeStops.length-1);let s=activeStops[stopIndex];announce('Próxima parada: '+s.stop_name)}let s=activeStops[stopIndex];if(s){$('nextstop').textContent=s.stop_name;$('distance').textContent=best<100?'Parada próxima':`Aproximadamente ${Math.round(best)} metros`}}
-$('stop').onclick=()=>{if(watch!==null)navigator.geolocation.clearWatch(watch);watch=null;$('stop').disabled=true;$('start').disabled=!$('line').value;$('status').textContent='Navegación finalizada.';announce('Navegación finalizada')};if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+
+// ==========================================
+// AUVASA GPS - MOTOR PRINCIPAL
+// ==========================================
+
+// MAPA
+const map = L.map('map').setView([41.6523, -4.7245], 13);
+window.map = map;
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19,
+  attribution: '© OpenStreetMap'
+}).addTo(map);
+
+// DATOS GTFS
+let tables = {};
+let routes = [];
+let trips = [];
+let stops = [];
+let shapes = [];
+
+let gps = null;
+let watch = null;
+let routeLayer = null;
+let stopLayer = null;
+let busMarker = null;
+let activeStops = [];
+let stopIndex = 0;
+let activeTrip = null;
+
+// ELEMENTOS HTML
+const $ = id => document.getElementById(id);
+
+// LECTOR CSV GTFS
+function csv(content) {
+  const lines = content.replace(/^\uFEFF/, '').trim().split(/\r?\n/);
+  if (lines.length < 2) return [];
+
+  const parseLine = line => {
+    const result = [];
+    let value = '';
+    let quoted = false;
+
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+
+      if (c === '"') {
+        if (quoted && line[i + 1] === '"') {
+          value += '"';
+          i++;
+        } else {
+          quoted = !quoted;
+        }
+      } else if (c === ',' && !quoted) {
+        result.push(value);
+        value = '';
+      } else {
+        value += c;
+      }
+    }
+
+    result.push(value);
+    return result;
+  };
+
+  const headers = parseLine(lines.shift());
+
+  return lines.filter(line => line.trim()).map(line => {
+    const values = parseLine(line);
+    return Object.fromEntries(
+      headers.map((header, i) => [header.trim(), values[i] || ''])
+    );
+  });
+}
+
+// CARGAR GTFS
+$('gtfs').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  $('status').textContent = 'Leyendo datos oficiales GTFS...';
+
+  try {
+    const zip = await JSZip.loadAsync(file);
+    tables = {};
+
+    for (const name of [
+      'routes.txt',
+      'trips.txt',
+      'stops.txt',
+      'stop_times.txt',
+      'shapes.txt'
+    ]) {
+      if (zip.file(name)) {
+        tables[name] = csv(await zip.file(name).async('text'));
+      }
+    }
+
+    if (!tables['routes.txt'] ||
+        !tables['trips.txt'] ||
+        !tables['stops.txt'] ||
+        !tables['stop_times.txt']) {
+      throw new Error('Faltan archivos GTFS obligatorios.');
+    }
+
+    routes = tables['routes.txt'];
+    trips = tables['trips.txt'];
+    stops = tables['stops.txt'];
+    shapes = tables['shapes.txt'] || [];
+
+    const select = $('line');
+    select.innerHTML = '<option value="">Selecciona línea</option>';
+
+    routes.forEach(route => {
+      const option = document.createElement('option');
+      option.value = route.route_id;
+      option.textContent =
+        (route.route_short_name || route.route_id) +
+        ' — ' + (route.route_long_name || '');
+
+      select.append(option);
+    });
+
+    select.disabled = false;
+    $('status').textContent =
+      `GTFS cargado correctamente: ${routes.length} líneas y ${stops.length} paradas.`;
+
+  } catch (error) {
+    console.error(error);
+    $('status').textContent =
+      'Error al cargar GTFS: ' + error.message;
+  }
+});
+
+// SELECCIÓN DE LÍNEA
+$('line').addEventListener('change', () => {
+  const id = $('line').value;
+  const direction = $('direction');
+
+  direction.innerHTML = '';
+
+  const availableTrips = trips.filter(t => t.route_id === id);
+  const directions = [...new Set(
+    availableTrips.map(t => t.direction_id || '0')
+  )];
+
+  directions.forEach(value => {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent =
+      value === '0' ? 'Sentido 1' :
+      value === '1' ? 'Sentido 2' :
+      'Sentido ' + value;
+
+    direction.append(option);
+  });
+
+  direction.disabled = !id || directions.length === 0;
+  $('start').disabled = !id || directions.length === 0;
+});
+
+function stopObj(id) {
+  return stops.find(stop => stop.stop_id === id);
+}
+
+// AVISOS POR VOZ
+function announce(message) {
+  if (!('speechSynthesis' in window)) return;
+
+  const utterance = new SpeechSynthesisUtterance(message);
+  utterance.lang = 'es-ES';
+
+  speechSynthesis.cancel();
+  speechSynthesis.speak(utterance);
+}
+
+// INICIAR NAVEGACIÓN
+$('start').onclick = () => {
+  const lineId = $('line').value;
+  const directionId = $('direction').value;
+
+  const trip = trips.find(t =>
+    t.route_id === lineId &&
+    (t.direction_id || '0') === directionId
+  );
+
+  if (!trip) {
+    $('status').textContent =
+      'No hay viajes disponibles para este sentido.';
+    return;
+  }
+
+  if (!navigator.geolocation) {
+    $('status').textContent = 'GPS no disponible en este navegador.';
+    return;
+  }
+
+  if (watch !== null) {
+    navigator.geolocation.clearWatch(watch);
+  }
+
+  activeTrip = trip;
+
+  const stopTimes = tables['stop_times.txt']
+    .filter(s => s.trip_id === trip.trip_id)
+    .sort((a, b) =>
+      Number(a.stop_sequence) - Number(b.stop_sequence)
+    );
+
+  activeStops = stopTimes
+    .map(s => stopObj(s.stop_id))
+    .filter(Boolean);
+
+  if (!activeStops.length) {
+    $('status').textContent =
+      'Este viaje no tiene paradas disponibles.';
+    return;
+  }
+
+  stopIndex = 0;
+  gps = null;
+
+  draw(trip);
+
+  $('stop').disabled = false;
+  $('start').disabled = true;
+
+  $('status').textContent = 'Iniciando navegación GPS...';
+
+  announce('Navegación iniciada. ' +
+    'Primera parada: ' + activeStops[0].stop_name);
+
+  watch = navigator.geolocation.watchPosition(
+    position => {
+      const latitude = position.coords.latitude;
+      const longitude = position.coords.longitude;
+
+      const speed = position.coords.speed;
+      const velocity = speed === null
+        ? '--'
+        : Math.round(speed * 3.6);
+
+      $('speed').textContent = velocity;
+
+      gps = [latitude, longitude];
+
+      if (!busMarker) {
+        busMarker = L.circleMarker(gps, {
+          radius: 9,
+          color: '#087fc1',
+          fillColor: '#ffffff',
+          fillOpacity: 1,
+          weight: 4
+        }).addTo(map);
+      } else {
+        busMarker.setLatLng(gps);
+      }
+
+      map.panTo(gps);
+
+      updateNext();
+    },
+
+    error => {
+      $('status').textContent =
+        'Error GPS: ' + error.message;
+    },
+
+    {
+      enableHighAccuracy: true,
+      maximumAge: 2000,
+      timeout: 15000
+    }
+  );
+
+  $('status').textContent =
+    'Navegación GPS activa. Sigue el recorrido resaltado.';
+};
+
+// DIBUJAR RECORRIDO Y PARADAS
+function draw(trip) {
+  if (routeLayer) map.removeLayer(routeLayer);
+  if (stopLayer) map.removeLayer(stopLayer);
+
+  const points = shapes
+    .filter(s => s.shape_id === trip.shape_id)
+    .sort((a, b) =>
+      Number(a.shape_pt_sequence) -
+      Number(b.shape_pt_sequence)
+    )
+    .map(s => [
+      Number(s.shape_pt_lat),
+      Number(s.shape_pt_lon)
+    ]);
+
+  if (points.length) {
+    routeLayer = L.polyline(points, {
+      color: '#087fc1',
+      weight: 6,
+      opacity: 0.85
+    }).addTo(map);
+
+    map.fitBounds(routeLayer.getBounds(), {
+      padding: [25, 25]
+    });
+  }
+
+  stopLayer = L.layerGroup().addTo(map);
+
+  activeStops.forEach((stop, index) => {
+    L.circleMarker([
+      Number(stop.stop_lat),
+      Number(stop.stop_lon)
+    ], {
+      radius: 6,
+      color: '#10253f',
+      fillColor: '#ffffff',
+      fillOpacity: 1
+    })
+    .addTo(stopLayer)
+    .bindTooltip(
+      (index + 1) + '. ' + stop.stop_name
+    );
+  });
+
+  if (!points.length) {
+    const coordinates = activeStops.map(s => [
+      Number(s.stop_lat),
+      Number(s.stop_lon)
+    ]);
+
+    if (coordinates.length) {
+      map.fitBounds(coordinates, { padding: [25, 25] });
+    }
+  }
+}
+
+// CONTROL DE PRÓXIMAS PARADAS
+function updateNext() {
+  if (!gps || !activeStops.length) return;
+
+  const stop = activeStops[stopIndex];
+
+  if (!stop) return;
+
+  const distance = map.distance(gps, [
+    Number(stop.stop_lat),
+    Number(stop.stop_lon)
+  ]);
+
+  // Se considera alcanzada al estar a menos de 35 metros.
+  if (distance < 35) {
+    announce('Parada: ' + stop.stop_name);
+
+    if (stopIndex < activeStops.length - 1) {
+      stopIndex++;
+
+      const next = activeStops[stopIndex];
+
+      announce('Próxima parada: ' + next.stop_name);
+    } else {
+      $('nextstop').textContent = 'Final de recorrido';
+      $('distance').textContent = 'Última parada alcanzada';
+      announce('Fin del recorrido');
+
+      return;
+    }
+  }
+
+  const nextStop = activeStops[stopIndex];
+
+  $('nextstop').textContent = nextStop.stop_name;
+
+  $('distance').textContent =
+    distance < 100
+      ? 'Parada próxima'
+      : `Aproximadamente ${Math.round(distance)} metros`;
+}
+
+// FINALIZAR NAVEGACIÓN
+$('stop').onclick = () => {
+  if (watch !== null) {
+    navigator.geolocation.clearWatch(watch);
+  }
+
+  watch = null;
+  gps = null;
+  activeTrip = null;
+
+  $('stop').disabled = true;
+  $('start').disabled = !$('line').value;
+
+  $('status').textContent = 'Navegación finalizada.';
+
+  $('speed').textContent = '--';
+  $('nextstop').textContent = 'Selecciona línea y sentido';
+  $('distance').textContent = 'La navegación GPS aún no está activa';
+
+  announce('Navegación finalizada');
+};
+
+// REGISTRO SERVICE WORKER
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js')
+      .catch(error => console.error(
+        'Error registrando Service Worker:', error
+      ));
+  });
+}

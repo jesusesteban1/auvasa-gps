@@ -134,9 +134,17 @@ async function loadGTFS(zip) {
   }
 
   routes = tables['routes.txt'];
-  trips = tables['trips.txt'];
-  stops = tables['stops.txt'];
-  shapes = tables['shapes.txt'] || [];
+trips = tables['trips.txt'];
+stops = tables['stops.txt'];
+shapes = tables['shapes.txt'] || [];
+
+const calendars = tables['calendar.txt'] || [];
+const calendarDates = tables['calendar_dates.txt'] || [];
+
+window.gtfsCalendars = {
+  calendars,
+  calendarDates
+};
 
   // Cargar líneas del conductor
 

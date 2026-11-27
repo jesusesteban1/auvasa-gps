@@ -1,6 +1,6 @@
 
 // ==========================================
-// AUVASA GPS - MOTOR PRINCIPAL
+// AUVASA GPS 2.0 - MOTOR PRINCIPAL
 // ==========================================
 
 // MAPA
@@ -27,11 +27,14 @@ let busMarker = null;
 let activeStops = [];
 let stopIndex = 0;
 let activeTrip = null;
+let announcedStops = new Set();
 
-// ELEMENTOS HTML
 const $ = id => document.getElementById(id);
 
-// LECTOR CSV GTFS
+// ==========================================
+// LECTOR CSV
+// ==========================================
+
 function csv(content) {
   const lines = content.replace(/^\uFEFF/, '').trim().split(/\r?\n/);
   if (lines.length < 2) return [];
@@ -67,72 +70,140 @@ function csv(content) {
 
   return lines.filter(line => line.trim()).map(line => {
     const values = parseLine(line);
+
     return Object.fromEntries(
       headers.map((header, i) => [header.trim(), values[i] || ''])
     );
   });
 }
 
-// CARGAR GTFS
+// ==========================================
+// CARGAR DATOS GTFS
+// ==========================================
+
+async function loadGTFS(zip) {
+  tables = {};
+
+  const required = [
+    'routes.txt',
+    'trips.txt',
+    'stops.txt',
+    'stop_times.txt'
+  ];
+
+  const getFile = name => {
+    const files = zip.file(new RegExp('(^|/)' + name + '$', 'i'));
+    return files.length ? files[0] : null;
+  };
+
+  for (const name of [
+    ...required,
+    'shapes.txt'
+  ]) {
+    const file = getFile(name);
+
+    if (file) {
+      tables[name] = csv(await file.async('text'));
+    }
+  }
+
+  for (const name of required) {
+    if (!tables[name]) {
+      throw new Error('Falta el archivo ' + name);
+    }
+  }
+
+  routes = tables['routes.txt'];
+  trips = tables['trips.txt'];
+  stops = tables['stops.txt'];
+  shapes = tables['shapes.txt'] || [];
+
+  const select = $('line');
+  select.innerHTML = '<option value="">Selecciona línea</option>';
+
+  routes.forEach(route => {
+    const option = document.createElement('option');
+
+    option.value = route.route_id;
+
+    option.textContent =
+      (route.route_short_name || route.route_id) +
+      ' — ' + (route.route_long_name || '');
+
+    select.append(option);
+  });
+
+  select.disabled = false;
+
+  $('status').textContent =
+    `Datos GTFS cargados: ${routes.length} líneas y ${stops.length} paradas.`;
+
+  $('direction').disabled = true;
+  $('start').disabled = true;
+}
+
+// ==========================================
+// DESCARGA AUTOMÁTICA GTFS
+// ==========================================
+
+async function automaticGTFS() {
+  $('status').textContent = 'Descargando datos oficiales de AUVASA...';
+
+  try {
+    const response = await fetch('data/gtfs.zip', {
+      cache: 'no-store'
+    });
+
+    if (!response.ok) {
+      throw new Error('No se encuentra el archivo GTFS.');
+    }
+
+    const blob = await response.blob();
+
+    if (!blob.size) {
+      throw new Error('El archivo GTFS está vacío.');
+    }
+
+    const zip = await JSZip.loadAsync(blob);
+
+    await loadGTFS(zip);
+
+    console.log('GTFS automático cargado correctamente.');
+
+  } catch (error) {
+    console.error('Error GTFS automático:', error);
+
+    $('status').textContent =
+      'No se pudieron descargar los datos automáticamente. Puedes cargar el ZIP manualmente.';
+  }
+}
+
+// ==========================================
+// CARGA MANUAL DE EMERGENCIA
+// ==========================================
+
 $('gtfs').addEventListener('change', async e => {
   const file = e.target.files[0];
   if (!file) return;
 
-  $('status').textContent = 'Leyendo datos oficiales GTFS...';
+  $('status').textContent = 'Leyendo archivo GTFS...';
 
   try {
     const zip = await JSZip.loadAsync(file);
-    tables = {};
-
-    for (const name of [
-      'routes.txt',
-      'trips.txt',
-      'stops.txt',
-      'stop_times.txt',
-      'shapes.txt'
-    ]) {
-      if (zip.file(name)) {
-        tables[name] = csv(await zip.file(name).async('text'));
-      }
-    }
-
-    if (!tables['routes.txt'] ||
-        !tables['trips.txt'] ||
-        !tables['stops.txt'] ||
-        !tables['stop_times.txt']) {
-      throw new Error('Faltan archivos GTFS obligatorios.');
-    }
-
-    routes = tables['routes.txt'];
-    trips = tables['trips.txt'];
-    stops = tables['stops.txt'];
-    shapes = tables['shapes.txt'] || [];
-
-    const select = $('line');
-    select.innerHTML = '<option value="">Selecciona línea</option>';
-
-    routes.forEach(route => {
-      const option = document.createElement('option');
-      option.value = route.route_id;
-      option.textContent =
-        (route.route_short_name || route.route_id) +
-        ' — ' + (route.route_long_name || '');
-
-      select.append(option);
-    });
-
-    select.disabled = false;
-    $('status').textContent =
-      `GTFS cargado correctamente: ${routes.length} líneas y ${stops.length} paradas.`;
+    await loadGTFS(zip);
 
   } catch (error) {
     console.error(error);
+
     $('status').textContent =
       'Error al cargar GTFS: ' + error.message;
   }
 });
 
+// ==========================================
 // SELECCIÓN DE LÍNEA
+// ==========================================
+
 $('line').addEventListener('change', () => {
   const id = $('line').value;
   const direction = $('direction');
@@ -140,13 +211,16 @@ $('line').addEventListener('change', () => {
   direction.innerHTML = '';
 
   const availableTrips = trips.filter(t => t.route_id === id);
+
   const directions = [...new Set(
     availableTrips.map(t => t.direction_id || '0')
   )];
 
   directions.forEach(value => {
     const option = document.createElement('option');
+
     option.value = value;
+
     option.textContent =
       value === '0' ? 'Sentido 1' :
       value === '1' ? 'Sentido 2' :
@@ -155,15 +229,22 @@ $('line').addEventListener('change', () => {
     direction.append(option);
   });
 
-  direction.disabled = !id || directions.length === 0;
-  $('start').disabled = !id || directions.length === 0;
+  direction.disabled = !id || !directions.length;
+  $('start').disabled = !id || !directions.length;
 });
+
+// ==========================================
+// BUSCAR PARADAS
+// ==========================================
 
 function stopObj(id) {
   return stops.find(stop => stop.stop_id === id);
 }
 
+// ==========================================
 // AVISOS POR VOZ
+// ==========================================
+
 function announce(message) {
   if (!('speechSynthesis' in window)) return;
 
@@ -174,7 +255,10 @@ function announce(message) {
   speechSynthesis.speak(utterance);
 }
 
+// ==========================================
 // INICIAR NAVEGACIÓN
+// ==========================================
+
 $('start').onclick = () => {
   const lineId = $('line').value;
   const directionId = $('direction').value;
@@ -191,7 +275,7 @@ $('start').onclick = () => {
   }
 
   if (!navigator.geolocation) {
-    $('status').textContent = 'GPS no disponible en este navegador.';
+    $('status').textContent = 'GPS no disponible.';
     return;
   }
 
@@ -218,6 +302,7 @@ $('start').onclick = () => {
   }
 
   stopIndex = 0;
+  announcedStops.clear();
   gps = null;
 
   draw(trip);
@@ -227,8 +312,10 @@ $('start').onclick = () => {
 
   $('status').textContent = 'Iniciando navegación GPS...';
 
-  announce('Navegación iniciada. ' +
-    'Primera parada: ' + activeStops[0].stop_name);
+  announce(
+    'Navegación iniciada. Primera parada: ' +
+    activeStops[0].stop_name
+  );
 
   watch = navigator.geolocation.watchPosition(
     position => {
@@ -236,6 +323,7 @@ $('start').onclick = () => {
       const longitude = position.coords.longitude;
 
       const speed = position.coords.speed;
+
       const velocity = speed === null
         ? '--'
         : Math.round(speed * 3.6);
@@ -277,7 +365,10 @@ $('start').onclick = () => {
     'Navegación GPS activa. Sigue el recorrido resaltado.';
 };
 
+// ==========================================
 // DIBUJAR RECORRIDO Y PARADAS
+// ==========================================
+
 function draw(trip) {
   if (routeLayer) map.removeLayer(routeLayer);
   if (stopLayer) map.removeLayer(stopLayer);
@@ -291,7 +382,8 @@ function draw(trip) {
     .map(s => [
       Number(s.shape_pt_lat),
       Number(s.shape_pt_lon)
-    ]);
+    ])
+    .filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1]));
 
   if (points.length) {
     routeLayer = L.polyline(points, {
@@ -330,12 +422,17 @@ function draw(trip) {
     ]);
 
     if (coordinates.length) {
-      map.fitBounds(coordinates, { padding: [25, 25] });
+      map.fitBounds(coordinates, {
+        padding: [25, 25]
+      });
     }
   }
 }
 
+// ==========================================
 // CONTROL DE PRÓXIMAS PARADAS
+// ==========================================
+
 function updateNext() {
   if (!gps || !activeStops.length) return;
 
@@ -348,8 +445,9 @@ function updateNext() {
     Number(stop.stop_lon)
   ]);
 
-  // Se considera alcanzada al estar a menos de 35 metros.
-  if (distance < 35) {
+  if (distance < 35 && !announcedStops.has(stopIndex)) {
+    announcedStops.add(stopIndex);
+
     announce('Parada: ' + stop.stop_name);
 
     if (stopIndex < activeStops.length - 1) {
@@ -361,6 +459,7 @@ function updateNext() {
     } else {
       $('nextstop').textContent = 'Final de recorrido';
       $('distance').textContent = 'Última parada alcanzada';
+
       announce('Fin del recorrido');
 
       return;
@@ -369,15 +468,23 @@ function updateNext() {
 
   const nextStop = activeStops[stopIndex];
 
+  const nextDistance = map.distance(gps, [
+    Number(nextStop.stop_lat),
+    Number(nextStop.stop_lon)
+  ]);
+
   $('nextstop').textContent = nextStop.stop_name;
 
   $('distance').textContent =
-    distance < 100
+    nextDistance < 100
       ? 'Parada próxima'
-      : `Aproximadamente ${Math.round(distance)} metros`;
+      : `Aproximadamente ${Math.round(nextDistance)} metros`;
 }
 
+// ==========================================
 // FINALIZAR NAVEGACIÓN
+// ==========================================
+
 $('stop').onclick = () => {
   if (watch !== null) {
     navigator.geolocation.clearWatch(watch);
@@ -394,12 +501,16 @@ $('stop').onclick = () => {
 
   $('speed').textContent = '--';
   $('nextstop').textContent = 'Selecciona línea y sentido';
-  $('distance').textContent = 'La navegación GPS aún no está activa';
+  $('distance').textContent =
+    'La navegación GPS aún no está activa';
 
   announce('Navegación finalizada');
 };
 
-// REGISTRO SERVICE WORKER
+// ==========================================
+// SERVICE WORKER
+// ==========================================
+
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js')
@@ -408,3 +519,9 @@ if ('serviceWorker' in navigator) {
       ));
   });
 }
+
+// ==========================================
+// ARRANQUE AUTOMÁTICO
+// ==========================================
+
+automaticGTFS();

@@ -1,4 +1,3 @@
-
 <!doctype html>
 <html lang="es">
 <head>
@@ -23,20 +22,14 @@
   <div class="sub">TRANSPORTE INTELIGENTE · VALLADOLID</div>
 </header>
 
-<!-- PANTALLA PRINCIPAL -->
 <section id="home" class="home-screen">
-
   <div class="welcome">
     <span class="eyebrow">MOVILIDAD URBANA</span>
     <h1>Muévete por Valladolid.</h1>
     <p>Tu transporte urbano, conectado en tiempo real.</p>
   </div>
 
-  <div class="profile-card driver-card"
-       onclick="showProfile('driver')"
-       role="button" tabindex="0"
-       onkeydown="if(event.key==='Enter')showProfile('driver')">
-
+  <div class="profile-card driver-card" onclick="showProfile('driver')">
     <div class="profile-icon">🚌</div>
     <div>
       <h2>Conductor</h2>
@@ -45,79 +38,196 @@
     </div>
   </div>
 
-  <div class="profile-card passenger-card"
-       onclick="showProfile('user')"
-       role="button" tabindex="0"
-       onkeydown="if(event.key==='Enter')showProfile('user')">
-
+  <div class="profile-card passenger-card" onclick="showProfile('user')">
     <div class="profile-icon">👤</div>
     <div>
       <h2>Pasajero</h2>
-      <p>Consulta líneas, paradas y horarios.</p>
+      <p>Líneas, paradas, horarios y rutas.</p>
       <span class="card-action">ENTRAR →</span>
     </div>
   </div>
 
-  <div class="home-footer">
-    AUVASA GPS · VALLADOLID
-  </div>
-
+  <div class="home-footer">AUVASA GPS · VALLADOLID</div>
 </section>
 
-<!-- PERFIL PASAJERO -->
+<!-- MODO PASAJERO -->
 <section id="userPanel" hidden>
 
   <button onclick="showProfile('home')" class="secondary back-button">
-    ← Volver
+    ← Volver al inicio
   </button>
 
-  <div class="section-heading">
+  <div class="section-heading passenger-heading">
     <span class="eyebrow">TRANSPORTE PÚBLICO</span>
-    <h1>Perfil pasajero</h1>
-    <p>Todo el transporte urbano de Valladolid en tu bolsillo.</p>
+    <h1>¿Dónde quieres ir?</h1>
+    <p>Consulta toda la red de autobuses de Valladolid.</p>
   </div>
 
   <div class="passenger-options">
 
-    <article class="feature-card">
+    <button class="feature-card" onclick="passengerView('map')">
       <span>🗺️</span>
-      <h3>Mapa de líneas</h3>
-      <p>Visualiza recorridos y paradas de autobús.</p>
-    </article>
+      <strong>Mapa de líneas</strong>
+      <small>Todos los recorridos</small>
+    </button>
 
-    <article class="feature-card">
+    <button class="feature-card" onclick="passengerView('lines')">
+      <span>🚌</span>
+      <strong>Buscar líneas</strong>
+      <small>Líneas y sentidos</small>
+    </button>
+
+    <button class="feature-card" onclick="passengerView('stops')">
       <span>🚏</span>
-      <h3>Paradas</h3>
-      <p>Encuentra paradas y líneas disponibles.</p>
-    </article>
+      <strong>Buscar paradas</strong>
+      <small>Paradas y líneas</small>
+    </button>
 
-    <article class="feature-card">
+    <button class="feature-card" onclick="passengerView('timetables')">
       <span>🕒</span>
-      <h3>Horarios</h3>
-      <p>Consulta los horarios de servicio.</p>
-    </article>
+      <strong>Horarios</strong>
+      <small>Salidas programadas</small>
+    </button>
 
-    <article class="feature-card">
+    <button class="feature-card" onclick="passengerView('planner')">
       <span>🧭</span>
-      <h3>Planifica tu viaje</h3>
-      <p>Busca cómo llegar a tu destino.</p>
-    </article>
+      <strong>Cómo llegar</strong>
+      <small>Planifica tu viaje</small>
+    </button>
 
-    <article class="feature-card">
+    <button class="feature-card" onclick="passengerView('alerts')">
       <span>⚠️</span>
-      <h3>Incidencias</h3>
-      <p>Información sobre alteraciones del servicio.</p>
-    </article>
+      <strong>Incidencias</strong>
+      <small>Avisos del servicio</small>
+    </button>
 
   </div>
 
-  <p class="coming-soon">
-    Las funciones de consulta se irán activando con los datos oficiales.
+  <p id="passengerStatus" class="coming-soon">
+    Cargando información de AUVASA...
   </p>
+
+  <!-- MAPA GENERAL -->
+  <section id="view-map" class="passenger-view" hidden>
+    <button class="secondary" onclick="passengerView('menu')">← Menú pasajero</button>
+    <h2>Mapa de Valladolid</h2>
+    <p>Visualiza los recorridos y las paradas.</p>
+
+    <label>Seleccionar línea
+      <select id="passengerMapLine">
+        <option value="">Todas las líneas</option>
+      </select>
+    </label>
+
+    <div id="passengerMap" class="passenger-map"></div>
+  </section>
+
+  <!-- BUSCADOR DE LÍNEAS -->
+  <section id="view-lines" class="passenger-view" hidden>
+    <button class="secondary" onclick="passengerView('menu')">← Menú pasajero</button>
+    <h2>Buscar líneas</h2>
+    <p>Selecciona una línea para consultar sus recorridos.</p>
+
+    <label>Línea
+      <select id="passengerLine">
+        <option value="">Selecciona una línea</option>
+      </select>
+    </label>
+
+    <label>Sentido
+      <select id="passengerDirection" disabled>
+        <option value="">Selecciona un sentido</option>
+      </select>
+    </label>
+
+    <div id="lineDetails" class="result-panel">
+      Selecciona una línea para ver sus detalles.
+    </div>
+  </section>
+
+  <!-- BUSCADOR DE PARADAS -->
+  <section id="view-stops" class="passenger-view" hidden>
+    <button class="secondary" onclick="passengerView('menu')">← Menú pasajero</button>
+    <h2>Buscar paradas</h2>
+    <p>Busca una parada por su nombre.</p>
+
+    <label>Nombre de la parada
+      <input id="stopSearch" type="search" placeholder="Ej. Plaza Mayor">
+    </label>
+
+    <div id="stopResults" class="results-list">
+      Escribe el nombre de una parada.
+    </div>
+  </section>
+
+  <!-- HORARIOS -->
+  <section id="view-timetables" class="passenger-view" hidden>
+    <button class="secondary" onclick="passengerView('menu')">← Menú pasajero</button>
+    <h2>Horarios</h2>
+    <p>Consulta las salidas programadas.</p>
+
+    <label>Línea
+      <select id="timetableLine">
+        <option value="">Selecciona una línea</option>
+      </select>
+    </label>
+
+    <label>Sentido
+      <select id="timetableDirection" disabled>
+        <option value="">Selecciona un sentido</option>
+      </select>
+    </label>
+
+    <label>Parada
+      <select id="timetableStop" disabled>
+        <option value="">Selecciona una parada</option>
+      </select>
+    </label>
+
+    <div id="timetableResults" class="result-panel">
+      Selecciona línea, sentido y parada.
+    </div>
+  </section>
+
+  <!-- PLANIFICADOR -->
+  <section id="view-planner" class="passenger-view" hidden>
+    <button class="secondary" onclick="passengerView('menu')">← Menú pasajero</button>
+    <h2>Cómo llegar</h2>
+    <p>Planifica tu desplazamiento en autobús.</p>
+
+    <label>Origen
+      <input id="originSearch" type="search" placeholder="Escribe una parada">
+    </label>
+
+    <div id="originResults" class="results-list"></div>
+
+    <label>Destino
+      <input id="destinationSearch" type="search" placeholder="Escribe una parada">
+    </label>
+
+    <div id="destinationResults" class="results-list"></div>
+
+    <button id="planJourney">Buscar recorrido</button>
+
+    <div id="journeyResults" class="result-panel">
+      Selecciona un origen y un destino.
+    </div>
+  </section>
+
+  <!-- INCIDENCIAS -->
+  <section id="view-alerts" class="passenger-view" hidden>
+    <button class="secondary" onclick="passengerView('menu')">← Menú pasajero</button>
+    <h2>Incidencias del servicio</h2>
+    <p>Avisos y modificaciones de la red de autobuses.</p>
+
+    <div id="alertsResults" class="result-panel">
+      El apartado está preparado para conectar los avisos oficiales de AUVASA.
+    </div>
+  </section>
 
 </section>
 
-<!-- PERFIL CONDUCTOR -->
+<!-- MODO CONDUCTOR -->
 <main id="driverPanel" hidden>
 
   <button onclick="showProfile('home')" class="secondary back-button">
@@ -125,7 +235,6 @@
   </button>
 
   <section class="controls">
-
     <div class="section-heading">
       <span class="eyebrow">NAVEGACIÓN PROFESIONAL</span>
       <h1>Modo conductor</h1>
@@ -144,13 +253,8 @@
       </select>
     </label>
 
-    <button id="start" disabled>
-      ▶ Iniciar navegación
-    </button>
-
-    <button id="stop" class="secondary" disabled>
-      ■ Finalizar recorrido
-    </button>
+    <button id="start" disabled>▶ Iniciar navegación</button>
+    <button id="stop" class="secondary" disabled>■ Finalizar recorrido</button>
 
     <label class="upload">
       <strong>📂 Cargar datos oficiales GTFS</strong>
@@ -158,71 +262,47 @@
       <input id="gtfs" type="file" accept=".zip,application/zip">
     </label>
 
-    <p id="status">
-      Esperando la carga de los datos oficiales.
-    </p>
-
+    <p id="status">Esperando la carga de los datos oficiales.</p>
   </section>
 
-  <!-- MAPA -->
   <section class="mapwrap">
-
     <div id="map"></div>
-
     <div class="overlay">
-
       <div class="speed">
         <strong id="speed">--</strong>
         <small>km/h</small>
       </div>
-
       <div class="speed-limit">
         <small>LÍMITE</small>
         <strong id="limit">--</strong>
       </div>
-
     </div>
-
   </section>
 
-  <!-- PRÓXIMA PARADA -->
   <section class="next">
-
     <small>PRÓXIMA PARADA</small>
-
-    <strong id="nextstop">
-      Selecciona línea y sentido
-    </strong>
-
-    <span id="distance">
-      La navegación GPS aún no está activa
-    </span>
-
+    <strong id="nextstop">Selecciona línea y sentido</strong>
+    <span id="distance">La navegación GPS aún no está activa</span>
   </section>
 
 </main>
 
-<!-- LIBRERÍAS -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-
-<!-- MOTOR PRINCIPAL -->
 <script src="app.js"></script>
 
 <script>
 function showProfile(profile) {
-
-  document.getElementById('home').hidden =
-    profile !== 'home';
-
-  document.getElementById('driverPanel').hidden =
-    profile !== 'driver';
-
-  document.getElementById('userPanel').hidden =
-    profile !== 'user';
+  document.getElementById('home').hidden = profile !== 'home';
+  document.getElementById('driverPanel').hidden = profile !== 'driver';
+  document.getElementById('userPanel').hidden = profile !== 'user';
 
   if (profile === 'driver' && window.map) {
     setTimeout(() => window.map.invalidateSize(), 250);
+  }
+
+  if (profile === 'user' && window.passengerMap) {
+    setTimeout(() => window.passengerMap.invalidateSize(), 250);
   }
 
   window.scrollTo({ top: 0, behavior: 'smooth' });

@@ -2,123 +2,230 @@
 <!doctype html>
 <html lang="es">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<meta name="theme-color" content="#10253f">
-<link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="style.css">
-<title>AUVASA GPS</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#10253f">
+  <meta name="description" content="AUVASA GPS - Transporte inteligente de Valladolid">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="style.css">
+
+  <title>AUVASA GPS</title>
 </head>
+
 <body>
 
-<header>
+<header class="app-header">
   <div class="brand">AUVASA <span>GPS</span></div>
-  <div class="sub">Transporte inteligente · Valladolid</div>
+  <div class="sub">TRANSPORTE INTELIGENTE · VALLADOLID</div>
 </header>
 
-<section id="home" style="padding:24px 16px;text-align:center">
-  <h2>Bienvenido a AUVASA GPS</h2>
-  <p>Selecciona cómo quieres utilizar la aplicación.</p>
+<!-- PANTALLA PRINCIPAL -->
+<section id="home" class="home-screen">
 
-  <button onclick="showProfile('driver')" style="padding:22px;margin:12px 0">
-    🚌 SOY CONDUCTOR
-    <small style="display:block;font-weight:400;margin-top:6px">
-      Navegación profesional y asistencia en ruta
-    </small>
-  </button>
-
-  <button onclick="showProfile('user')" style="padding:22px;margin:12px 0;background:#087b83">
-    👤 SOY USUARIO
-    <small style="display:block;font-weight:400;margin-top:6px">
-      Líneas, paradas y planificación de viajes
-    </small>
-  </button>
-</section>
-
-<section id="userPanel" hidden style="padding:20px">
-  <button onclick="showProfile('home')" class="secondary">← Volver</button>
-  <h2>Perfil de usuario</h2>
-  <p>Consulta el transporte urbano de Valladolid.</p>
-  <div style="background:white;padding:18px;border-radius:12px">
-    <h3>Próximamente</h3>
-    <p>Estamos preparando estas funciones:</p>
-    <ul>
-      <li>Consulta de todas las líneas de AUVASA.</li>
-      <li>Mapa de recorridos y paradas.</li>
-      <li>Horarios de autobuses.</li>
-      <li>Planificación de desplazamientos.</li>
-      <li>Avisos e incidencias del servicio.</li>
-    </ul>
-    <p>Este perfil se desarrollará utilizando los datos oficiales de AUVASA.</p>
+  <div class="welcome">
+    <span class="eyebrow">MOVILIDAD URBANA</span>
+    <h1>Muévete por Valladolid.</h1>
+    <p>Tu transporte urbano, conectado en tiempo real.</p>
   </div>
+
+  <div class="profile-card driver-card"
+       onclick="showProfile('driver')"
+       role="button" tabindex="0"
+       onkeydown="if(event.key==='Enter')showProfile('driver')">
+
+    <div class="profile-icon">🚌</div>
+    <div>
+      <h2>Conductor</h2>
+      <p>Navegación profesional y asistencia en ruta.</p>
+      <span class="card-action">ENTRAR →</span>
+    </div>
+  </div>
+
+  <div class="profile-card passenger-card"
+       onclick="showProfile('user')"
+       role="button" tabindex="0"
+       onkeydown="if(event.key==='Enter')showProfile('user')">
+
+    <div class="profile-icon">👤</div>
+    <div>
+      <h2>Pasajero</h2>
+      <p>Consulta líneas, paradas y horarios.</p>
+      <span class="card-action">ENTRAR →</span>
+    </div>
+  </div>
+
+  <div class="home-footer">
+    AUVASA GPS · VALLADOLID
+  </div>
+
 </section>
 
+<!-- PERFIL PASAJERO -->
+<section id="userPanel" hidden>
+
+  <button onclick="showProfile('home')" class="secondary back-button">
+    ← Volver
+  </button>
+
+  <div class="section-heading">
+    <span class="eyebrow">TRANSPORTE PÚBLICO</span>
+    <h1>Perfil pasajero</h1>
+    <p>Todo el transporte urbano de Valladolid en tu bolsillo.</p>
+  </div>
+
+  <div class="passenger-options">
+
+    <article class="feature-card">
+      <span>🗺️</span>
+      <h3>Mapa de líneas</h3>
+      <p>Visualiza recorridos y paradas de autobús.</p>
+    </article>
+
+    <article class="feature-card">
+      <span>🚏</span>
+      <h3>Paradas</h3>
+      <p>Encuentra paradas y líneas disponibles.</p>
+    </article>
+
+    <article class="feature-card">
+      <span>🕒</span>
+      <h3>Horarios</h3>
+      <p>Consulta los horarios de servicio.</p>
+    </article>
+
+    <article class="feature-card">
+      <span>🧭</span>
+      <h3>Planifica tu viaje</h3>
+      <p>Busca cómo llegar a tu destino.</p>
+    </article>
+
+    <article class="feature-card">
+      <span>⚠️</span>
+      <h3>Incidencias</h3>
+      <p>Información sobre alteraciones del servicio.</p>
+    </article>
+
+  </div>
+
+  <p class="coming-soon">
+    Las funciones de consulta se irán activando con los datos oficiales.
+  </p>
+
+</section>
+
+<!-- PERFIL CONDUCTOR -->
 <main id="driverPanel" hidden>
-  <button onclick="showProfile('home')" class="secondary" style="margin:10px;width:calc(100% - 20px)">
+
+  <button onclick="showProfile('home')" class="secondary back-button">
     ← Volver al inicio
   </button>
 
   <section class="controls">
-    <label>Línea
+
+    <div class="section-heading">
+      <span class="eyebrow">NAVEGACIÓN PROFESIONAL</span>
+      <h1>Modo conductor</h1>
+      <p>Selecciona tu línea y comienza el recorrido.</p>
+    </div>
+
+    <label>Línea de autobús
       <select id="line">
         <option value="">Importa los datos GTFS</option>
       </select>
     </label>
 
-    <label>Sentido
+    <label>Sentido del recorrido
       <select id="direction" disabled>
-        <option>Selecciona una línea</option>
+        <option value="">Selecciona una línea</option>
       </select>
     </label>
 
-    <button id="start" disabled>Iniciar navegación</button>
-    <button id="stop" class="secondary" disabled>Finalizar</button>
+    <button id="start" disabled>
+      ▶ Iniciar navegación
+    </button>
+
+    <button id="stop" class="secondary" disabled>
+      ■ Finalizar recorrido
+    </button>
 
     <label class="upload">
-      Cargar archivo GTFS (.zip)
+      <strong>📂 Cargar datos oficiales GTFS</strong>
+      <span>Selecciona el archivo ZIP de AUVASA</span>
       <input id="gtfs" type="file" accept=".zip,application/zip">
     </label>
 
     <p id="status">
-      Carga el archivo GTFS oficial de AUVASA para disponer de líneas y paradas reales.
+      Esperando la carga de los datos oficiales.
     </p>
+
   </section>
 
+  <!-- MAPA -->
   <section class="mapwrap">
+
     <div id="map"></div>
+
     <div class="overlay">
+
       <div class="speed">
         <strong id="speed">--</strong>
         <small>km/h</small>
       </div>
-      <div>
+
+      <div class="speed-limit">
         <small>LÍMITE</small>
         <strong id="limit">--</strong>
       </div>
+
     </div>
+
   </section>
 
+  <!-- PRÓXIMA PARADA -->
   <section class="next">
+
     <small>PRÓXIMA PARADA</small>
-    <strong id="nextstop">Selecciona línea y sentido</strong>
-    <span id="distance">La navegación GPS aún no está activa</span>
+
+    <strong id="nextstop">
+      Selecciona línea y sentido
+    </strong>
+
+    <span id="distance">
+      La navegación GPS aún no está activa
+    </span>
+
   </section>
+
 </main>
 
+<!-- LIBRERÍAS -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+
+<!-- MOTOR PRINCIPAL -->
 <script src="app.js"></script>
 
 <script>
 function showProfile(profile) {
-  document.getElementById('home').hidden = profile !== 'home';
-  document.getElementById('driverPanel').hidden = profile !== 'driver';
-  document.getElementById('userPanel').hidden = profile !== 'user';
+
+  document.getElementById('home').hidden =
+    profile !== 'home';
+
+  document.getElementById('driverPanel').hidden =
+    profile !== 'driver';
+
+  document.getElementById('userPanel').hidden =
+    profile !== 'user';
 
   if (profile === 'driver' && window.map) {
-    setTimeout(() => window.map.invalidateSize(), 200);
+    setTimeout(() => window.map.invalidateSize(), 250);
   }
+
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 </script>
 

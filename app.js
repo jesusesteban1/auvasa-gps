@@ -1301,69 +1301,82 @@ $('planJourney').addEventListener('click', () => {
     return;
   }
 
-  const journeys = [];
+  output.textContent = 'Buscando las mejores combinaciones...';
 
-  trips.forEach(trip => {
-    const items = tripStops(trip.trip_id);
-
-    const originIndex = items.findIndex(
-      item => item.stop_id === selectedOrigin.stop_id
+  setTimeout(() => {
+    const journeys = searchJourneys(
+      selectedOrigin.stop_id,
+      selectedDestination.stop_id
     );
 
-    const destinationIndex = items.findIndex(
-      item => item.stop_id === selectedDestination.stop_id
-    );
+    output.replaceChildren();
 
-    if (
-      originIndex !== -1 &&
-      destinationIndex !== -1 &&
-      destinationIndex > originIndex
-    ) {
-      journeys.push({
-        trip,
-        origin: items[originIndex],
-        destination: items[destinationIndex]
-      });
+    const heading = document.createElement('strong');
+    heading.textContent = 'Resultados de tu búsqueda';
+    output.append(heading);
+
+    if (!journeys.length) {
+      const message = document.createElement('p');
+      message.textContent =
+        'No se han encontrado combinaciones para el horario actual.';
+      output.append(message);
+      return;
     }
-  });
 
-  const heading = document.createElement('strong');
-  heading.textContent = 'Resultados de tu búsqueda';
-  output.append(heading);
+    journeys.sort((a, b) => {
+      const aEnd = timeToSeconds(
+        a.legs[a.legs.length - 1].destination.arrival_time
+      );
+      const bEnd = timeToSeconds(
+        b.legs[b.legs.length - 1].destination.arrival_time
+      );
 
-  if (!journeys.length) {
-    const message = document.createElement('p');
-    message.textContent =
-      'No se ha encontrado un trayecto directo. La búsqueda de transbordos estará disponible en una próxima actualización.';
-    output.append(message);
-    return;
-  }
+      return aEnd - bEnd;
+    });
 
-  const unique = new Map();
+    journeys.slice(0, 10).forEach((journey, index) => {
+      const card = document.createElement('div');
+      card.className = 'result-item';
 
-  journeys.forEach(journey => {
-    const key = journey.trip.route_id + '-' +
-      (journey.trip.direction_id || '0');
+      const title = document.createElement('strong');
+      title.textContent = index === 0
+        ? 'Opción recomendada'
+        : 'Alternativa ' + (index + 1);
 
-    if (!unique.has(key)) unique.set(key, journey);
-  });
+      card.append(title);
 
-  [...unique.values()].forEach(journey => {
-    const item = document.createElement('div');
-    item.className = 'result-item';
+      journey.legs.forEach((leg, legIndex) => {
+        const detail = document.createElement('p');
 
-    const title = document.createElement('strong');
-    title.textContent = 'Línea ' + routeName(journey.trip.route_id);
+        detail.textContent =
+          'Línea ' + routeName(leg.trip.route_id) +
+          ' · ' + directionName(leg.trip.direction_id || '0') +
+          ' · ' + formatTime(leg.origin.departure_time) +
+          ' → ' + formatTime(leg.destination.arrival_time);
 
-    const detail = document.createElement('small');
-    detail.textContent =
-      directionName(journey.trip.direction_id || '0') +
-      ' · Salida: ' + formatTime(journey.origin.departure_time) +
-      ' · Llegada: ' + formatTime(journey.destination.arrival_time);
+        card.append(detail);
 
-    item.append(title, detail);
-    output.append(item);
-  });
+        if (legIndex < journey.legs.length - 1) {
+          const transfer = document.createElement('small');
+
+          transfer.textContent =
+            'Transbordo en ' +
+            (stopObj(leg.destination.stop_id)?.stop_name || 'la parada');
+
+          card.append(transfer);
+        }
+      });
+
+      const changes = document.createElement('small');
+      changes.textContent =
+        journey.legs.length === 1
+          ? 'Sin transbordos'
+          : (journey.legs.length - 1) + ' transbordo(s)';
+
+      card.append(changes);
+      output.append(card);
+    });
+  }, 50);
 });
 
 // ==========================================

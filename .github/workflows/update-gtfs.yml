@@ -1,0 +1,38 @@
+
+name: Actualizar datos GTFS AUVASA
+
+on:
+  schedule:
+    - cron: '40 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-gtfs:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Descargar GTFS oficial
+        run: |
+          mkdir -p data
+          curl -fL --retry 3 \
+            "http://212.170.201.204:50080/GTFSRTapi/api/GTFSFile" \
+            -o data/gtfs.zip
+
+      - name: Comprobar archivo ZIP
+        run: unzip -t data/gtfs.zip
+
+      - name: Guardar actualización
+        run: |
+          git config user.name "AUVASA GPS Bot"
+          git config user.email "actions@github.com"
+          git add data/gtfs.zip
+          if ! git diff --cached --quiet; then
+            git commit -m "Actualizar datos GTFS AUVASA"
+            git push
+          fi

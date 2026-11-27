@@ -984,7 +984,79 @@ $('timetableStop').addEventListener('change', () => {
 
   $('timetableResults').append(list);
 });
+// ==========================================
+// PLANIFICADOR: CALENDARIO DE SERVICIO
+// ==========================================
 
+function getActiveServiceIds(date = new Date()) {
+  const calendars = window.gtfsCalendars?.calendars || [];
+  const exceptions = window.gtfsCalendars?.calendarDates || [];
+
+  // Si no hay calendarios, no podemos verificar el servicio
+  if (!calendars.length && !exceptions.length) {
+    return null;
+  }
+
+  const dateKey =
+    date.getFullYear() +
+    String(date.getMonth() + 1).padStart(2, '0') +
+    String(date.getDate()).padStart(2, '0');
+
+  const weekdays = [
+    'sunday',
+    'monday',
+    'tuesday',
+    'wednesday',
+    'thursday',
+    'friday',
+    'saturday'
+  ];
+
+  const weekday = weekdays[date.getDay()];
+  const active = new Set();
+
+  calendars.forEach(calendar => {
+    if (
+      dateKey >= calendar.start_date &&
+      dateKey <= calendar.end_date &&
+      calendar[weekday] === '1'
+    ) {
+      active.add(calendar.service_id);
+    }
+  });
+
+  // Aplicar excepciones oficiales
+  exceptions
+    .filter(item => item.date === dateKey)
+    .forEach(item => {
+      if (item.exception_type === '1') {
+        active.add(item.service_id);
+      } else if (item.exception_type === '2') {
+        active.delete(item.service_id);
+      }
+    });
+
+  return active;
+}
+
+function isTripServiceActive(trip, activeServices) {
+  if (activeServices === null) return true;
+
+  return activeServices.has(trip.service_id);
+}
+
+// Convertir horas GTFS a segundos
+function timeToSeconds(time) {
+  if (!time) return null;
+
+  const parts = time.split(':').map(Number);
+
+  if (parts.length !== 3 || parts.some(n => !Number.isFinite(n))) {
+    return null;
+  }
+
+  return parts[0] * 3600 + parts[1] * 60 + parts[2];
+}
 // ==========================================
 // PASAJERO: PLANIFICADOR
 // ==========================================
